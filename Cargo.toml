@@ -4,3 +4,10 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+clap = { version = "4.0", features = ["derive"] }
+inquire = "0.7.5"
+rand = "0.9.1"
+[dependencies.uuid]
+version = "1.17.0"
+features=["v4"]
+inquire="0.75"
