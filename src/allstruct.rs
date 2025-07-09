@@ -5,7 +5,7 @@ use std::fmt;
 use std::time::{Duration, SystemTime};
 use uuid::Uuid;
 
-#[derive(Debug)]
+#[derive(Debug,Clone)]
 pub struct Proposal {
     statement: String,
     id: Uuid,
@@ -13,21 +13,28 @@ pub struct Proposal {
     s_time: SystemTime,
     duration: Duration,
     threshold_config: ThresholdConfig,
+    result:ProposalResult
 }
 
+#[derive(Debug,Clone)]
 pub struct ProposalResult {
     for_votes: usize,
     against: usize,
     passed: bool,
 }
-#[derive(Debug)]
+
+#[derive(Debug,Clone)]
 pub struct Vote {
+    vote:bool,
     id: String,
+    proposalId:Uuid,
     timestamp: SystemTime,
     weight: u64,
     signature: String,
+    voteescalation:vote_escalation_type,
 }
-#[derive(Debug)]
+
+#[derive(Debug,Clone,Copy)]
 pub struct ThresholdConfig {
     profile: ProgressionProfile,
     base: f64,
@@ -36,7 +43,8 @@ pub struct ThresholdConfig {
     escalation_type: proposal_escalation,
 }
 
-pub enum escalation_type {
+#[derive(Debug,Clone)]
+pub enum vote_escalation_type {
     linear,
     exponential,
     stepped,
@@ -59,7 +67,7 @@ impl proposal_escalation {
         match index {
             0 => proposal_escalation::exponential,
             1 => proposal_escalation::linear,
-            _ => panic!("Invalid variant index"),
+            _ => proposal_escalation::linear,
         }
     }
 }
@@ -82,7 +90,7 @@ impl fmt::Display for Window {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug,Clone,Copy)]
 pub enum ProgressionProfile {
     Conservative,
     aggressive,
@@ -107,30 +115,32 @@ impl ProgressionProfile {
 }
 
 impl Proposal {
-    pub fn getTimeBasedThreshold(proposal: &Proposal)->f64 {
+    pub fn getTimeBasedThreshold(proposal: &mut Proposal)->(f64,&mut Proposal) {
         let Proposal {
-            threshold_config,..
+            threshold_config,s_time,..
         } = proposal;
         let e_type = threshold_config.escalation_type;
-        let secs = SystemTime::now()
-            .duration_since(proposal.s_time)
-            .map(|d| d.as_secs_f64()) // Convert to f64 if successful
-            .unwrap_or(0.0); 
-		
-        let new_threshold: (f64)=match e_type {
+        if threshold_config.base==threshold_config.max{
+            return (threshold_config.base,proposal)
+        }
+        
+        let new_threshold:f64=match e_type {
             proposal_escalation::linear => {
-                return threshold_config.base + (secs * threshold_config.rate);
+                threshold_config.base+=0.01f64 * threshold_config.rate;
+                threshold_config.base
             },
             proposal_escalation::exponential => {
-				return threshold_config.base*(1.0+0.03*secs).powf(2.0);
+				threshold_config.base*=(1.0+0.03*0.01f64).powf(2.0);
+                threshold_config.base
 			}
         };
+        (new_threshold,proposal)
+    }
+
+    pub fn getProposalTypeThreshold() {
 
     }
 
-    pub fn getProposalTypeThreshold() {}
-
-    pub fn calculate_current_threshold() {}
 
     pub fn submit_proposal(
         statement: String,
@@ -166,6 +176,11 @@ impl Proposal {
                 escalation_type: etype,
             },
             votes: Some(HashMap::new()),
+            result:ProposalResult{
+                for_votes:0,
+                against:0,
+                passed:false
+            }
         };
     }
 
@@ -176,7 +191,22 @@ impl Proposal {
         }
     }
 
-    pub fn check_status() {}
+    pub fn check_status(proposal: &mut Proposal)->bool {
+        
+            if  proposal.result.for_votes>proposal.result.against{
+                proposal.result.passed=true;
+                true
+            }
+            else {
+                proposal.result.passed=false;
+                false
+            }
+      
+    }
 
-    pub fn extend_window() {}
+    pub fn extend_window(&mut self) {
+        if Self::is_active(&self) {
+            self.duration+=Duration::from_secs(120);
+        }
+    }
 }
