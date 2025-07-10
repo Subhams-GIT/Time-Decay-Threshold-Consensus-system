@@ -1,19 +1,20 @@
 use clap::ValueEnum;
+use ed25519_dalek::{VerifyingKey,Verifier,Signature};
 use rand::Rng;
 use std::collections::HashMap;
 use std::fmt;
 use std::time::{Duration, SystemTime};
 use uuid::Uuid;
-
+use crate::validator::hash_vote_for_timestamp_proof;
 #[derive(Debug,Clone)]
 pub struct Proposal {
-    statement: String,
-    id: Uuid,
+    pub statement: String,
+    pub id: Uuid,
     votes: Option<HashMap<String, Vote>>,
-    s_time: SystemTime,
+    pub s_time: SystemTime,
     duration: Duration,
     threshold_config: ThresholdConfig,
-    result:ProposalResult
+    pub result:ProposalResult
 }
 
 #[derive(Debug,Clone)]
@@ -22,16 +23,44 @@ pub struct ProposalResult {
     against: usize,
     passed: bool,
 }
+#[derive(Debug,Clone)]
+pub enum vote{
+    Yes,
+    No
+}
+
+impl vote {
+    pub fn random() -> String {
+        let mut rng = rand::thread_rng();
+
+        let count = 3;
+
+        let index = rng.gen_range(0..count);
+
+        let index=match index {
+            0 => vote::No,
+            1 => vote::Yes,
+            _ => vote::Yes,
+        };
+
+       let choice= match index{
+            vote::No=>"No",
+            vote::Yes=>"Yes",
+            _=>"Yes"
+        };
+        choice.to_string()
+    }
+}
 
 #[derive(Debug,Clone)]
 pub struct Vote {
-    vote:bool,
-    id: String,
-    proposalId:Uuid,
-    timestamp: SystemTime,
-    weight: u64,
-    signature: String,
-    voteescalation:vote_escalation_type,
+    pub vote:String,
+    pub id: Uuid,
+    pub proposalId:Uuid,
+    pub timestamp: SystemTime,
+    pub weight: f64,
+    pub signature: Signature,
+    pub voteescalation:vote_decay_type,
 }
 
 #[derive(Debug,Clone,Copy)]
@@ -44,11 +73,27 @@ pub struct ThresholdConfig {
 }
 
 #[derive(Debug,Clone)]
-pub enum vote_escalation_type {
+pub enum vote_decay_type {
     linear,
     exponential,
-    stepped,
 }
+
+impl vote_decay_type {
+    pub fn random() -> vote_decay_type {
+        let mut rng = rand::thread_rng();
+
+        let count = 3;
+
+        let index = rng.gen_range(0..count);
+
+        match index {
+            0 => vote_decay_type::linear,
+            1 => vote_decay_type::exponential,
+            _ => vote_decay_type::linear,
+        }
+    }
+}
+
 
 #[derive(Debug, Copy, Clone)]
 pub enum proposal_escalation {
@@ -115,6 +160,7 @@ impl ProgressionProfile {
 }
 
 impl Proposal {
+    
     pub fn getTimeBasedThreshold(proposal: &mut Proposal)->(f64,&mut Proposal) {
         let Proposal {
             threshold_config,s_time,..
@@ -137,8 +183,14 @@ impl Proposal {
         (new_threshold,proposal)
     }
 
-    pub fn getProposalTypeThreshold() {
-
+    pub fn verify_vote_signature(vote: &Vote, validator_pubkey: &VerifyingKey) -> bool {
+        let message = hash_vote_for_timestamp_proof(
+            vote.id,
+            vote.proposalId,
+            &vote.vote,
+            vote.timestamp,
+        );
+        validator_pubkey.verify(&message, &vote.signature).is_ok()
     }
 
 
