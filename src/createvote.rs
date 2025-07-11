@@ -1,30 +1,41 @@
-use std::time::SystemTime;
-use crate::allstruct::{vote, vote_decay_type,Vote};
-use ed25519_dalek;
-use ed25519_dalek::SigningKey;
+use std::thread;
+use std::time::Duration;
+
+use crate::validator::Validator;
 use uuid::Uuid;
-use crate::validator;
+use crate::allstruct::{Proposal, vote};
+use crate::votestruct::Vote;
+use crate::votestruct::vote_decay_type;
+use ed25519_dalek::SigningKey;
 
-pub fn createVote(pid:Uuid,voterid:Uuid,votedecay:&vote_decay_type,s_time:SystemTime) ->Vote{
-	let seed = [1u8; 32];
-    let signing_key = SigningKey::from_bytes(&seed);
-    let choice = vote::random();
-	let validator = validator::Validator { signing_key };
-	let (timestamp, sign) = validator.sign_vote_timestamp(voterid, pid, &choice);
-	
-	let mut vote=Vote{
-		id:voterid,
-		proposalId:pid,
-		vote:choice,
-		timestamp,
-		voteescalation:votedecay.clone(),
-		weight:0.0,
-		signature:sign,
-	};
+pub fn create_vote(proposal:&mut Proposal) {
 
-	let weight=vote.calculate_weight(s_time);
-	vote.weight=weight;
-	
-	vote.submit_vote(votedecay.clone())
-	
+    for _ in 0..10 {
+        thread::sleep(Duration::from_secs(10));
+        let voter_id = Uuid::new_v4();
+        let votedecay = vote_decay_type::random();
+
+        let seed = [1u8; 32];
+        let signing_key = SigningKey::from_bytes(&seed);
+        let validator = Validator { signing_key };
+
+        let choice = vote::random();
+        let (timestamp, signature) = validator.sign_vote_timestamp(voter_id, proposal.id, &choice);
+
+        let mut myvote = Vote {
+            vote: choice,
+            id: voter_id,
+            proposalId: proposal.id,
+            timestamp,
+            weight: 1.0,
+            signature,
+            voteescalation: votedecay,
+        };
+
+
+        myvote.calculate_weight(proposal.s_time);
+		Vote::submit_vote(proposal, myvote.clone());
+
+    }
 }
+

@@ -1,69 +1,56 @@
+use crate::validator::hash_vote_for_timestamp_proof;
 use clap::ValueEnum;
-use ed25519_dalek::{VerifyingKey,Verifier,Signature};
+use ed25519_dalek::{Verifier, VerifyingKey};
 use rand::Rng;
 use std::collections::HashMap;
 use std::fmt;
 use std::time::{Duration, SystemTime};
 use uuid::Uuid;
-use crate::validator::hash_vote_for_timestamp_proof;
-#[derive(Debug,Clone)]
+use serde::{Serialize,Deserialize};
+use crate::votestruct::Vote;
+
+#[derive(Debug, Clone,Serialize,Deserialize)]
 pub struct Proposal {
     pub statement: String,
     pub id: Uuid,
-    votes: Option<HashMap<String, Vote>>,
+    pub votes: HashMap<vote, u8>,
     pub s_time: SystemTime,
-    duration: Duration,
-    threshold_config: ThresholdConfig,
-    pub result:ProposalResult
+    pub duration: Duration,
+    pub threshold_config: ThresholdConfig,
+    pub result: ProposalResult,
 }
 
-#[derive(Debug,Clone)]
+#[derive(Debug, Clone, Copy,Serialize,Deserialize)]
 pub struct ProposalResult {
-    for_votes: usize,
-    against: usize,
+    pub for_votes: usize,
+    pub against: usize,
     passed: bool,
 }
-#[derive(Debug,Clone)]
-pub enum vote{
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Copy,Serialize,Deserialize)]
+pub enum vote {
     Yes,
-    No
+    No,
 }
 
 impl vote {
-    pub fn random() -> String {
-        let mut rng = rand::thread_rng();
+    pub fn random() -> vote {
+        let mut rng = rand::rng();
 
         let count = 3;
 
-        let index = rng.gen_range(0..count);
+        let index = rng.random_range(0..count);
 
-        let index=match index {
+        match index {
             0 => vote::No,
             1 => vote::Yes,
             _ => vote::Yes,
-        };
-
-       let choice= match index{
-            vote::No=>"No",
-            vote::Yes=>"Yes",
-            _=>"Yes"
-        };
-        choice.to_string()
+        }
     }
 }
 
-#[derive(Debug,Clone)]
-pub struct Vote {
-    pub vote:String,
-    pub id: Uuid,
-    pub proposalId:Uuid,
-    pub timestamp: SystemTime,
-    pub weight: f64,
-    pub signature: Signature,
-    pub voteescalation:vote_decay_type,
-}
 
-#[derive(Debug,Clone,Copy)]
+#[derive(Debug, Clone, Copy,Serialize,Deserialize)]
 pub struct ThresholdConfig {
     profile: ProgressionProfile,
     base: f64,
@@ -72,30 +59,9 @@ pub struct ThresholdConfig {
     escalation_type: proposal_escalation,
 }
 
-#[derive(Debug,Clone)]
-pub enum vote_decay_type {
-    linear,
-    exponential,
-}
-
-impl vote_decay_type {
-    pub fn random() -> vote_decay_type {
-        let mut rng = rand::thread_rng();
-
-        let count = 3;
-
-        let index = rng.gen_range(0..count);
-
-        match index {
-            0 => vote_decay_type::linear,
-            1 => vote_decay_type::exponential,
-            _ => vote_decay_type::linear,
-        }
-    }
-}
 
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone,Serialize,Deserialize)]
 pub enum proposal_escalation {
     linear,
     exponential,
@@ -103,11 +69,11 @@ pub enum proposal_escalation {
 
 impl proposal_escalation {
     pub fn random() -> Self {
-        let mut rng = rand::thread_rng();
+        let mut rng = rand::rng();
 
         let count = 3;
 
-        let index = rng.gen_range(0..count);
+        let index = rng.random_range(0..count);
 
         match index {
             0 => proposal_escalation::exponential,
@@ -117,7 +83,7 @@ impl proposal_escalation {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, ValueEnum)]
+#[derive(Debug, Clone, PartialEq, ValueEnum,Serialize,Deserialize)]
 pub enum Window {
     short,
     medium,
@@ -135,7 +101,7 @@ impl fmt::Display for Window {
     }
 }
 
-#[derive(Debug,Clone,Copy)]
+#[derive(Debug, Clone, Copy,Serialize,Deserialize)]
 pub enum ProgressionProfile {
     Conservative,
     aggressive,
@@ -144,11 +110,11 @@ pub enum ProgressionProfile {
 
 impl ProgressionProfile {
     pub fn random() -> Self {
-        let mut rng = rand::thread_rng();
+        let mut rng = rand::rng();
 
         let count = 3;
 
-        let index = rng.gen_range(0..count);
+        let index = rng.random_range(0..count);
 
         match index {
             0 => ProgressionProfile::Conservative,
@@ -160,39 +126,50 @@ impl ProgressionProfile {
 }
 
 impl Proposal {
-    
-    pub fn getTimeBasedThreshold(proposal: &mut Proposal)->(f64,&mut Proposal) {
+    pub fn getVote(&mut self, choice: vote) {
+        *self.votes.entry(choice).or_insert(0) += 1;
+    }
+
+    pub fn getTimeBasedThreshold(proposal: &mut Proposal) ->(){
         let Proposal {
-            threshold_config,s_time,..
+            threshold_config,
+            s_time,
+            ..
         } = proposal;
-        let e_type = threshold_config.escalation_type;
-        if threshold_config.base==threshold_config.max{
-            return (threshold_config.base,proposal)
+        if threshold_config.base == threshold_config.max {
+            return ();
         }
         
-        let new_threshold:f64=match e_type {
-            proposal_escalation::linear => {
-                threshold_config.base+=0.01f64 * threshold_config.rate;
-                threshold_config.base
-            },
-            proposal_escalation::exponential => {
-				threshold_config.base*=(1.0+0.03*0.01f64).powf(2.0);
-                threshold_config.base
-			}
+
+        let elapsed_secs = match SystemTime::now().duration_since(*s_time) {
+            Ok(duration) => duration.as_secs_f64(),
+            Err(_) => 0.0, 
         };
-        (new_threshold,proposal)
+    
+        let new_threshold = match threshold_config.escalation_type {
+            proposal_escalation::linear => {
+                let increment = threshold_config.rate * elapsed_secs * 0.01;
+                threshold_config.base = (threshold_config.base + increment).min(threshold_config.max);
+                threshold_config.base
+            }
+            proposal_escalation::exponential => {
+                
+                threshold_config.base *= (1.0 + 0.03 * threshold_config.rate).powf(elapsed_secs / 60.0); // per minute
+                threshold_config.base = threshold_config.base.min(threshold_config.max);
+                threshold_config.base
+            }
+        };
     }
 
-    pub fn verify_vote_signature(vote: &Vote, validator_pubkey: &VerifyingKey) -> bool {
-        let message = hash_vote_for_timestamp_proof(
-            vote.id,
-            vote.proposalId,
-            &vote.vote,
-            vote.timestamp,
-        );
+    pub fn verify_vote_signature(
+        choice: &vote,
+        vote: &Vote,
+        validator_pubkey: &VerifyingKey,
+    ) -> bool {
+        let message =
+            hash_vote_for_timestamp_proof(vote.id, vote.proposalId, choice, vote.timestamp);
         validator_pubkey.verify(&message, &vote.signature).is_ok()
     }
-
 
     pub fn submit_proposal(
         statement: String,
@@ -201,7 +178,7 @@ impl Proposal {
         escalation_type: proposal_escalation,
     ) -> Self {
         let time = match duration {
-            Window::short => 5,
+            Window::short => 2,
             Window::medium => 30,
             Window::long => 60,
         };
@@ -227,12 +204,12 @@ impl Proposal {
                 max: 0.68,
                 escalation_type: etype,
             },
-            votes: Some(HashMap::new()),
-            result:ProposalResult{
-                for_votes:0,
-                against:0,
-                passed:false
-            }
+            votes: HashMap::new(),
+            result: ProposalResult {
+                for_votes: 0,
+                against: 0,
+                passed: false,
+            },
         };
     }
 
@@ -243,22 +220,19 @@ impl Proposal {
         }
     }
 
-    pub fn check_status(proposal: &mut Proposal)->bool {
-        
-            if  proposal.result.for_votes>proposal.result.against{
-                proposal.result.passed=true;
-                true
-            }
-            else {
-                proposal.result.passed=false;
-                false
-            }
-      
+    pub fn check_status(proposal: &mut Proposal) -> bool {
+        if proposal.result.for_votes > proposal.result.against {
+            proposal.result.passed = true;
+            true
+        } else {
+            proposal.result.passed = false;
+            false
+        }
     }
 
     pub fn extend_window(&mut self) {
         if Self::is_active(&self) {
-            self.duration+=Duration::from_secs(120);
+            self.duration += Duration::from_secs(120);
         }
     }
 }
