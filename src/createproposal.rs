@@ -6,12 +6,11 @@ pub fn createproposal(statement: String, duration: Window) -> Proposal {
     let escalation = proposal_escalation::random();
 
     let mut proposal = Proposal::submit_proposal(statement, duration, progression, escalation);
-    thread::sleep(Duration::from_secs(5));
+    println!("proposal created");
     createvote::create_vote(&mut proposal);
 
     while proposal.is_active() {
         Proposal::getTimeBasedThreshold(&mut proposal);
-        thread::sleep(Duration::from_secs(1));
     }
     Proposal::check_status(&mut proposal);
     println!("{:?}",proposal.result);

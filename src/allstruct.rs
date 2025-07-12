@@ -13,7 +13,7 @@ use crate::votestruct::Vote;
 pub struct Proposal {
     pub statement: String,
     pub id: Uuid,
-    pub votes: HashMap<vote, u8>,
+    pub votes: HashMap<vote, f64>,
     pub s_time: SystemTime,
     pub duration: Duration,
     pub threshold_config: ThresholdConfig,
@@ -22,8 +22,8 @@ pub struct Proposal {
 
 #[derive(Debug, Clone, Copy,Serialize,Deserialize)]
 pub struct ProposalResult {
-    pub for_votes: usize,
-    pub against: usize,
+    pub for_votes: f64,
+    pub against: f64,
     passed: bool,
 }
 
@@ -56,12 +56,12 @@ pub struct ThresholdConfig {
     base: f64,
     rate: f64,
     max: f64,
-    escalation_type: proposal_escalation,
+    pub escalation_type: proposal_escalation,
 }
 
 
 
-#[derive(Debug, Copy, Clone,Serialize,Deserialize)]
+#[derive(Debug, Copy, Clone,Serialize,Deserialize,PartialEq)]
 pub enum proposal_escalation {
     linear,
     exponential,
@@ -126,8 +126,8 @@ impl ProgressionProfile {
 }
 
 impl Proposal {
-    pub fn getVote(&mut self, choice: vote) {
-        *self.votes.entry(choice).or_insert(0) += 1;
+    pub fn getVote(&mut self, choice: &Vote) {
+        *self.votes.entry(choice.vote).or_insert(0.0) += choice.weight;
     }
 
     pub fn getTimeBasedThreshold(proposal: &mut Proposal) ->(){
@@ -146,7 +146,7 @@ impl Proposal {
             Err(_) => 0.0, 
         };
     
-        let new_threshold = match threshold_config.escalation_type {
+        match threshold_config.escalation_type {
             proposal_escalation::linear => {
                 let increment = threshold_config.rate * elapsed_secs * 0.01;
                 threshold_config.base = (threshold_config.base + increment).min(threshold_config.max);
@@ -206,8 +206,8 @@ impl Proposal {
             },
             votes: HashMap::new(),
             result: ProposalResult {
-                for_votes: 0,
-                against: 0,
+                for_votes: 0.0f64,
+                against: 0.0f64,
                 passed: false,
             },
         };

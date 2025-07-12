@@ -40,7 +40,6 @@ impl vote_decay_type {
 
 impl Vote {
     pub fn calculate_weight(&mut self,s_time:SystemTime)->f64{
-        println!("inside weight");
         let now = SystemTime::now();
         let elapsed = now
             .duration_since(s_time)
@@ -59,7 +58,7 @@ impl Vote {
             }
             vote_decay_type::exponential => {
 				let lambda = 0.01;
-                self.weight *= (-lambda * elapsed).exp();
+                self.weight /= (lambda * elapsed).exp();
 				self.weight
             }
         };
@@ -68,12 +67,12 @@ impl Vote {
     }
 
     pub fn submit_vote(proposal: &mut Proposal, vote: Vote) {
-        println!("created vote {:?}",vote);
-        proposal.getVote(vote.vote);
+        // println!("created vote {:?}",vote);
+        proposal.getVote(&vote);
         if vote.vote == vote::Yes {
-            proposal.result.for_votes += 1;
+            proposal.result.for_votes += vote.weight;
         } else {
-            proposal.result.against += 1;
+            proposal.result.against += vote.weight;
         }
         
     }
