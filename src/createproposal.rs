@@ -1,4 +1,4 @@
-use std::{thread, time::Duration};
+
 use crate::allstruct::{Proposal, Window, ProgressionProfile, proposal_escalation};
 use crate::createvote;
 pub fn createproposal(statement: String, duration: Window) -> Proposal {

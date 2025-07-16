@@ -24,7 +24,7 @@ pub struct Proposal {
 pub struct ProposalResult {
     pub for_votes: f64,
     pub against: f64,
-    passed: bool,
+    pub passed: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Copy,Serialize,Deserialize)]
@@ -53,9 +53,9 @@ impl vote {
 #[derive(Debug, Clone, Copy,Serialize,Deserialize)]
 pub struct ThresholdConfig {
     profile: ProgressionProfile,
-    base: f64,
+    pub base: f64,
     rate: f64,
-    max: f64,
+    pub max: f64,
     pub escalation_type: proposal_escalation,
 }
 
